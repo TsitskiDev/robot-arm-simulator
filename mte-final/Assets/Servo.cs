@@ -3,6 +3,7 @@ using UnityEngine;
 
 public class Servo : MonoBehaviour
 {
+    //this mimics the real world servo as it takes it some amount of time to actually reach its destination
     public float rotationSpeed = 12;
     public bool x, y, z;
 
@@ -25,6 +26,8 @@ public class Servo : MonoBehaviour
         _baseRotation = transform.localRotation;
     }
 
+    //set the angle along the x, y, or z axis
+    //which axis to use is defined in the scene
     public void SetAngle(float angle) {
         if (x)
             _toRotation = Quaternion.Euler(angle, 0, 0);
@@ -34,6 +37,7 @@ public class Servo : MonoBehaviour
             _toRotation = Quaternion.Euler(0, 0, angle);
     }
 
+    //move to the set angle
     private void Update() {
         Quaternion offsetToRotation = _baseRotation * _toRotation;
 

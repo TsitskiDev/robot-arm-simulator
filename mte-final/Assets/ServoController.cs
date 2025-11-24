@@ -14,14 +14,6 @@ namespace DefaultNamespace {
         private Transform _fakeTransformPoint;
         private Rigidbody _pickedUpObject;
 
-        //test variables;
-        public float aAngle;
-        public float bAngle;
-        public float cAngle;
-        public float dAngle;
-        public bool testPickup;
-        public bool reset;
-
         private void Awake() {
             //get references to all the virtual servos
             _aServo = GameObject.Find("A").GetComponent<Servo>();
@@ -31,27 +23,20 @@ namespace DefaultNamespace {
             _fakeTransformPoint = GameObject.Find("Fake Transform Point").transform;
         }
 
-        private void Update() {
-            /*
-            _a.SetAngle(aAngle);
-            _b.SetAngle(bAngle);
-            _c.SetAngle(cAngle);
-            _d.SetAngle(dAngle);
-            */
+        //another virtual only function, in the real world we would just input
+        //the pickup objects position, but since we have the simulator
+        //we can just find the closest pickup object like so:
+        public Rigidbody GetClosestPickup() {
+            Rigidbody closest = null;
+            var objects = FindObjectsByType<Rigidbody>(0);
 
-            //test functions, dont do anything for actual run
-
-            if (testPickup) {
-                if (_pickedUpObject)
-                    FakeDrop();
-                else
-                    FakePickup();
-
-                testPickup = false;
+            foreach (Rigidbody o in objects) {
+                if (!closest || Vector3.Distance(_fakeTransformPoint.position, o.transform.position) <
+                    Vector3.Distance(_fakeTransformPoint.position, closest.transform.position))
+                    closest = o;
             }
 
-            if (reset)
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            return closest;
         }
 
         //physics sims wont be good enough to do a real pickup, we have to fake it
@@ -60,22 +45,10 @@ namespace DefaultNamespace {
             FakeDrop();
 
             //find the closest rigidbody, and attach it to the arm
-            var objects = FindObjectsByType<Rigidbody>(0);
-
-            Rigidbody closest = null;
-
-            foreach (Rigidbody o in objects) {
-                if (!closest || Vector3.Distance(_fakeTransformPoint.position, o.transform.position) <
-                    Vector3.Distance(_fakeTransformPoint.position, closest.transform.position))
-                    closest = o;
-            }
-
-            _pickedUpObject = closest;
+            _pickedUpObject = GetClosestPickup();
 
             //disable rigidbody, parent it to the robot arm
             _pickedUpObject.isKinematic = true;
-            _pickedUpObject.transform.position = _fakeTransformPoint.position;
-            _pickedUpObject.transform.rotation = _fakeTransformPoint.rotation;
             _pickedUpObject.transform.parent = _fakeTransformPoint;
         }
 
@@ -89,11 +62,13 @@ namespace DefaultNamespace {
             _pickedUpObject = null;
         }
 
-        private void Start() {
-            StartCoroutine(RobotRoutine());
+        //NON SIMULATOR CODE:
+        public enum RobotTestType {
+            SimpleMove,
+            ComplexMove,
+            ObstacleAvoidance
         }
 
-        //YOUR CODE HERE
         [Serializable]
         public class Obstacle {
             public Vector3 position;
@@ -105,6 +80,12 @@ namespace DefaultNamespace {
             public float angleStart => angleCenter - GetAngleOffset(); //might not be from 0-360
             public float angleEnd => angleCenter + GetAngleOffset();
             public float angleCenter => To360Angle(GetAngleCenter());
+
+            public Obstacle(Vector3 position, float obstacleHeight, float obstacleWidth) {
+                this.position = position;
+                this.obstacleHeight = obstacleHeight;
+                this.obstacleWidth = obstacleWidth;
+            }
 
             public float To360Angle(float angle) {
                 if (angle < 0)
@@ -119,7 +100,7 @@ namespace DefaultNamespace {
             public bool IsNearObstacle(float angle) {
                 angle = To360Angle(angle);
 
-                float angleThreshold = 5;
+                float angleThreshold = 10;
                 float start = To360Angle(angleStart - angleThreshold);
                 float end = To360Angle(angleEnd + angleThreshold);
 
@@ -148,17 +129,27 @@ namespace DefaultNamespace {
 
                 return angleOffset;
             }
-
-            public Obstacle(Vector3 position, float obstacleHeight, float obstacleWidth) {
-                this.position = position;
-                this.obstacleHeight = obstacleHeight;
-                this.obstacleWidth = obstacleWidth;
-            }
         }
 
         public List<Obstacle> obstacles = new List<Obstacle>();
+        public RobotTestType robotTestType;
 
-        public float GetObstacleAvoidanceAngle() {
+        //control functions
+        //get closest obstacle based on normalized delta angles from the obstacle to the a servo's current angle
+        public Obstacle GetClosestObstacle() {
+            Obstacle closestObstacle = null;
+
+            foreach (Obstacle obstacle in obstacles) {
+                if (closestObstacle == null || AngleDelta(_aServo.currentAngle, obstacle.angleCenter) <
+                    AngleDelta(_aServo.currentAngle, closestObstacle.angleCenter))
+                    closestObstacle = obstacle;
+            }
+
+            return closestObstacle;
+        }
+
+        //get the necessary avoidance angle based on the nearest obstacles distance from the arm, and the obstacles height + a offset
+        public float GetObstacleXAvoidanceAngle() {
             Obstacle closestObstacle = GetClosestObstacle();
 
             //want to be above the obstacle by a bit
@@ -168,35 +159,53 @@ namespace DefaultNamespace {
 
             return avoidanceAngle;
         }
-        
-        public float AngleDelta(float a, float b)
-        {
+
+        //return the delta between two angles, but make sure it's normalized, so 0 - 360 does not return 360, but returns 0 instead
+        public float AngleDelta(float a, float b) {
             float diff = Mathf.Abs(a - b) % 360f;
             return diff > 180f ? 360f - diff : diff;
         }
 
-        public Obstacle GetClosestObstacle() {
-            Obstacle closestObstacle = null;
+        //helper functions to find necessary angles for the arm to point at certain positions (ex. to point at a pickup cube)
+        public float GetXAngleToPosition(Vector3 position) {
+            float distanceFromArm = Mathf.Sqrt(Mathf.Pow(position.x, 2) + Mathf.Pow(position.z, 2));
 
-            foreach (Obstacle obstacle in obstacles) {
-                if (closestObstacle == null || AngleDelta(_aServo.currentAngle, obstacle.angleCenter) < AngleDelta(_aServo.currentAngle, closestObstacle.angleCenter))
-                    closestObstacle = obstacle;
-            }
+            float armGroundOffset = 1f;
 
-            return closestObstacle;
+            return Mathf.Atan2(distanceFromArm, position.y - armGroundOffset) * Mathf.Rad2Deg;
         }
 
-        IEnumerator RobotRoutine() {
+        public float GetYAngleToPosition(Vector3 position) {
+            return Mathf.Atan2(position.x, position.z) * Mathf.Rad2Deg;
+        }
+
+        //robot tests
+        private void Start() {
+            switch (robotTestType) {
+                case RobotTestType.SimpleMove:
+                    StartCoroutine(SimpleMove());
+                    break;
+                case RobotTestType.ComplexMove:
+                    StartCoroutine(ComplexMove());
+                    break;
+                case RobotTestType.ObstacleAvoidance:
+                    StartCoroutine(ObstacleAvoidance());
+                    break;
+            }
+        }
+
+        IEnumerator SimpleMove() {
             while (true) {
-                //put your code here:
                 yield return new WaitForSeconds(1);
 
-                _aServo.SetAngle(-90);
+                //use hard coded angles to move towards the pickup object
+                _aServo.SetAngle(270);
 
                 _bServo.SetAngle(90);
 
-                _cServo.SetAngle(30);
-
+                //perform a pickup,
+                //using real servos it'd be able to pickup a paper cube,
+                //but virtually we have to fake pickup the object
                 yield return new WaitUntil(() => _aServo.isAtRotation);
 
                 _dServo.SetAngle(25);
@@ -207,21 +216,132 @@ namespace DefaultNamespace {
 
                 yield return new WaitForSeconds(1);
 
+                _aServo.SetAngle(90);
+
+                yield return new WaitUntil(() => _aServo.isAtRotation);
+
+                //fake drop the pickup object
+                _dServo.SetAngle(0);
+
+                FakeDrop();
+
+                yield return new WaitUntil(() => _dServo.isAtRotation);
+
+                _bServo.SetAngle(0);
+
+                //break out of the sim
+                break;
+            }
+        }
+
+        IEnumerator ComplexMove() {
+            while (true) {
+                yield return new WaitForSeconds(1);
+                //use test function to get the closest virtual pickup object
+                //using real servos, we'd manually put in the objects position,
+                //virtually we can just read it like so:
+                GameObject closestPickup = GetClosestPickup().gameObject;
+
+                Vector3 pickupPosition = closestPickup.transform.position;
+
+                //set the main servos to go towards the pickup object
+                //calculate on the fly the necessary angles to go to the pickup object
+                float yAngle = GetYAngleToPosition(pickupPosition);
+
+                float xAngle = GetXAngleToPosition(pickupPosition);
+
+                _aServo.SetAngle(yAngle);
+
+                _bServo.SetAngle(xAngle);
+
+                //perform a pickup
+                yield return new WaitUntil(() => _aServo.isAtRotation);
+
+                _dServo.SetAngle(25);
+
+                yield return new WaitUntil(() => _dServo.isAtRotation);
+
+                FakePickup();
+
+                yield return new WaitForSeconds(1);
+
+                //calculate on the fly the drop off angles,
+                //going to be to the right, and up a bit
+                Vector3 dropOffPosition = new(4, 4, 0);
+
+                float dropOffYAngle = GetYAngleToPosition(dropOffPosition);
+
+                float dropOffXAngle = GetXAngleToPosition(dropOffPosition);
+
+                _aServo.SetAngle(dropOffYAngle);
+
+                _bServo.SetAngle(dropOffXAngle);
+
+                yield return new WaitUntil(() => _aServo.isAtRotation && _bServo.isAtRotation);
+
+                //fake drop the pickup object
+                _dServo.SetAngle(0);
+
+                FakeDrop();
+
+                yield return new WaitUntil(() => _dServo.isAtRotation);
+
+                _bServo.SetAngle(0);
+
+                //break out of the sim
+                break;
+            }
+        }
+
+        IEnumerator ObstacleAvoidance() {
+            while (true) {
+                yield return new WaitForSeconds(1);
+                //virtual pickup position
+                GameObject closestPickup = GetClosestPickup().gameObject;
+
+                Vector3 pickupPosition = closestPickup.transform.position;
+
+                //set the main servos to go towards the pickup object
+                float yAngle = GetYAngleToPosition(pickupPosition);
+
+                float xAngle = GetXAngleToPosition(pickupPosition);
+
+                _aServo.SetAngle(yAngle);
+
+                _bServo.SetAngle(xAngle);
+
+                //perform a pickup
+                yield return new WaitUntil(() => _aServo.isAtRotation);
+
+                _dServo.SetAngle(25);
+
+                yield return new WaitUntil(() => _dServo.isAtRotation);
+
+                FakePickup();
+
+                yield return new WaitForSeconds(1);
+
+                //move towards the drop off point (180 deg to the right)
+                //using a loop here allows the obstacle avoidance checks
                 for (int i = -90; i < 90; i++) {
                     _aServo.SetAngle(i);
 
+                    //if near a obstacle, set the x-axis servo to a angle that avoids the obstacle
                     if (GetClosestObstacle().IsNearObstacle(_aServo.currentAngle))
-                        _bServo.SetAngle(GetObstacleAvoidanceAngle());
-                    else
+                        _bServo.SetAngle(GetObstacleXAvoidanceAngle());
+                    else //otherwise just set it flat
                         _bServo.SetAngle(90);
 
+                    //this just waits until the x-axis servo is avoiding the obstacle
                     yield return new WaitUntil(() => _bServo.isAtRotation);
 
+                    //increment forward by a small amount
                     yield return new WaitForSeconds(0.01f);
                 }
 
                 yield return new WaitUntil(() => _aServo.isAtRotation);
 
+                //fake drop the pickup object
                 _dServo.SetAngle(0);
 
                 FakeDrop();
@@ -235,6 +355,8 @@ namespace DefaultNamespace {
             }
         }
 
+        //some simple debugging
+        //draw the obstacles using their angle start / end and their height
         private Vector3 AngleToDirection(float angleDeg) {
             float a = angleDeg * Mathf.Deg2Rad;
             return new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
