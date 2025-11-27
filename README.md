@@ -28,3 +28,9 @@ https://github.com/user-attachments/assets/58b193dd-13c0-4f8e-98f9-f85635accac1
 OBSTACLE AVOIDANCE DEMO
 
 https://github.com/user-attachments/assets/17e98d6e-89b4-43ab-b1b6-cb9d2484f335
+
+OBSTACLE AVOIDANCE VARIABLE DEMO
+(shows how obstacles are defined with simple position width and height, obstacle avoidance movement is calculated on the fly)
+
+https://github.com/user-attachments/assets/fea9f0aa-32e4-4b1a-8ee5-7bd6ddd3e705
+
