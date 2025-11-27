@@ -17,6 +17,10 @@ robot-arm-simulator\mte-final\Assets\Servo.cs
 robot-arm-simulator\mte-final\Assets\ServoController.cs
 (contains arduino simulator logic)
 
+ARDUINO CODE
+(uncommented, grade the C# version, this is what we converted into c#)
+robot-arm-simulator\ObstacleAvoidanceServoController.ino
+
 SIMPLE MOVE DEMO
 
 https://github.com/user-attachments/assets/3bcad51b-083d-4a6a-8881-058b603214fc
